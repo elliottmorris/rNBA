@@ -9,12 +9,13 @@
 already_downloaded <- lapply(dir('data/schedules/'),function(x){substr(x,5,8)}) %>% unlist()
 
 # download all years
-years <- as.character(seq(2018,2010,-1)) # earliest is 1950
+years <- as.character(seq(2018,1950,-1)) # earliest is 1950
 
 years <- years[!years %in% already_downloaded]
 
 # redo this season every time
 #years <- append('2019',years)
+
 
 # input year as string
 download_yearly_game_data <- function(year){
@@ -62,10 +63,12 @@ download_yearly_game_data <- function(year){
     game_id <- game_id[!is.na(game_id)]
     
     # extract all columns (except date)
-    data <- webpage %>% 
+    data <- try(webpage %>% 
       html_nodes("table#schedule > tbody > tr > td") %>% 
       html_text() %>%
-      matrix(ncol = length(col_names) - 2, byrow = TRUE)
+      matrix(ncol = length(col_names) - 2, byrow = TRUE),silent = T)
+    
+    if(isTRUE(class(data)=="try-error")){next}
     
     # combine game IDs, dates and columns in dataframe for this month, add col names
     month_df <- as.data.frame(cbind(game_id, dates, data), stringsAsFactors = FALSE)
@@ -88,6 +91,9 @@ download_yearly_game_data <- function(year){
   # drop boxscore column
   df$box_score_text <- NULL
   
+  # sort by date
+  df <- df %>% arrange(ymd(date_game))
+  
   # save to file
   write.csv(df,
             sprintf("data/schedules/NBA-%s_schedule.csv",year),
@@ -99,7 +105,11 @@ download_yearly_game_data <- function(year){
 
 #download_yearly_game_data(year='2019')
 
-# dont do parallel, will exhaust scraping limits
+# loop to scrape all years!
+print("####################################")
+print("GET ALL YEARLY SCHEDULES:")
+print("####################################")
+
 for (x in years){
   download_yearly_game_data(year=x)
   
@@ -109,7 +119,7 @@ for (x in years){
 
 
 
-# Scrape box scores -----------------------------------------------------
+# Scrape box scores and pbp -----------------------------------------------------
 # This script scrapes the box scores for all NBA games in the 2017-18 season.
 # Results are saved into a list called `master`. The key for a game is its
 # game_id (which we can get from the output of 2018-12-11_nba_game_data.R).
@@ -156,14 +166,14 @@ parseBoxScore <- function(xx) {
 already_downloaded <- lapply(dir('data/game data/'),function(x){substr(x,5,8)}) %>% unlist()
 
 # download all years
-years <- as.character(seq(2018,2010,-1)) # earliest is 1950
+years <- as.character(seq(2018,1950,-1)) # earliest is 1950
 
 years <- years[!years %in% already_downloaded]
 
 # for this season, make sure to update new games -- have to read the schedule file and game file and compare
 #years <- append('2019',years)
 
-# time to acrually scrape
+# scraping function
 scrape_box_scores <- function(year){
   print("##############################")
   print(sprintf("Scraping %s...",year))
@@ -263,9 +273,15 @@ scrape_box_scores <- function(year){
   
 }
 
+# loop to scrape all years!
+print("####################################")
+print("SCRAPE BOX SCORES AND PBP:")
+print("####################################")
+
 for (x in years){
   scrape_box_scores(year=x)
   
   print("Sleeping...")
   Sys.sleep(10)
 }
+
