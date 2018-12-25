@@ -88,4 +88,4 @@ ggplot(improvement, aes(y=reorder(team,delta),x=delta,color=delta)) +
 source("scripts/analyze_play_by_play.R")
 
 
-get_team_shot_x_time(2018,"Golden State Warriors")
+get_team_shot_x_time(2018,"San Antonio Spurs")
