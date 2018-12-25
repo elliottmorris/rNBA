@@ -14,23 +14,18 @@ years <- as.character(seq(2018,1950,-1)) # earliest is 1950
 years <- years[!years %in% already_downloaded]
 
 # redo this season every time
-#years <- append('2019',years)
-
+years <- append('2019',years)
 
 # input year as string
 download_yearly_game_data <- function(year){
   print("##############################")
   print(sprintf("Scraping %s...",year))
   
-  ########
   # PARAMETERS
-  ########
   monthList <- tolower(month.name)
   playoff_startDate <- ymd("2018-04-14")
   
-  ########
   # SCRIPT FOR SCRAPING DATA STARTS HERE
-  ########
   df <- data.frame()
   for (month in monthList) {
     # get webpage
@@ -93,6 +88,12 @@ download_yearly_game_data <- function(year){
   
   # sort by date
   df <- df %>% arrange(ymd(date_game))
+  
+  # HARD CODE: if game is pre-season, don't save the record
+  if(year==2019){
+    df <- df %>% 
+      filter(date_game > ymd("2018-10-01"))
+  }
   
   # save to file
   write.csv(df,
@@ -166,12 +167,12 @@ parseBoxScore <- function(xx) {
 already_downloaded <- lapply(dir('data/game data/'),function(x){substr(x,5,8)}) %>% unlist()
 
 # download all years
-years <- as.character(seq(2018,1950,-1)) # earliest is 1950
+years <- as.character(seq(2018,2001,-1)) # earliest is 2001
 
 years <- years[!years %in% already_downloaded]
 
 # for this season, make sure to update new games -- have to read the schedule file and game file and compare
-#years <- append('2019',years)
+years <- append('2019',years)
 
 # scraping function
 scrape_box_scores <- function(year){
@@ -186,11 +187,10 @@ scrape_box_scores <- function(year){
   game_df <- game_df %>% filter(!is.na(home_pts))
   
   # get every game score, in parallel
-  master <- list()
-  
   cl = makeCluster(detectCores()-1,type="FORK")
   
-  pblapply(game_df$game_id,cl=cl,
+  master <- 
+    pblapply(game_df$game_id,cl=cl,
            function(current_id){
              print(current_id)
     
@@ -205,6 +205,7 @@ scrape_box_scores <- function(year){
               html_table()
             names(tables) <- c("visitor_basic_boxscore", "visitor_adv_boxscore",
                                "home_basic_boxscore", "home_adv_boxscore")
+            
             tables <- lapply(tables, parseBoxScore)
             
             ##########
@@ -225,33 +226,33 @@ scrape_box_scores <- function(year){
             scores <- str_extract(events, "[\\+]*\\d+-\\d+[\\+]*")
             scores <- ifelse(str_detect(scores, "\\+"), scores, NA)
             
-            pdp_df <- data.frame(time = times, score = scores, stringsAsFactors = FALSE) %>%
+            pbp_df <- data.frame(time = times, score = scores, stringsAsFactors = FALSE) %>%
               na.omit()
-            pdp_df$score <- sapply(pdp_df$score, parseScore)
+            pbp_df$score <- sapply(pbp_df$score, parseScore)
             
             # split score into visitor and home score, get home advantage
-            pdp_df <- pdp_df %>% 
+            pbp_df <- pbp_df %>% 
               separate(score, into = c("visitor", "home"), sep = "-") %>%
               mutate(visitor = as.numeric(visitor), 
                      home = as.numeric(home),
                      time = ms(time))
             
             # get period of play (e.g. Q1, Q2, ...)
-            pdp_df$period <- NA
+            pbp_df$period <- NA
             period <- 0
             prev_time <- ms("0:00")
-            for (i in 1:nrow(pdp_df)) {
-              curr_time <- pdp_df[i, "time"]
+            for (i in 1:nrow(pbp_df)) {
+              curr_time <- pbp_df[i, "time"]
               if (prev_time < curr_time) {
                 period <- period + 1
               }
-              pdp_df[i, "period"] <- period
+              pbp_df[i, "period"] <- period
               prev_time <- curr_time
             }
             
             # convert time such that it runs upwards. regular quarters are 12M long, OT 
             # periods are 5M long
-            pdp_df <- pdp_df %>% mutate(time = ifelse(period <= 4, 
+            pbp_df <- pbp_df %>% mutate(time = ifelse(period <= 4, 
                                                       as.duration(12 * 60) - as.duration(time),
                                                       as.duration(5  * 60) - as.duration(time))) %>%
               mutate(time = ifelse(period <= 4,
@@ -260,9 +261,12 @@ scrape_box_scores <- function(year){
                                      as.duration(5 * 60 * (period - 5))
               ))
             
-            tables$pdp_df <- pdp_df
+            tables$pbp_df <- pbp_df
             
-            master[[current_id]] <- tables
+            # save game id so we can merge with the scheule df
+            tables$game_id <- current_id
+            
+            return(tables)
           }
   )
   
