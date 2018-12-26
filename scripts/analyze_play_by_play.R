@@ -112,10 +112,29 @@ get_team_shot_x_time <- function(season, team_name){
     }
     new_pbp <- new_pbp[order(new_pbp$time), ]
     new_pbp$adv <- with(new_pbp, team - opp)
-    new_pbp[-1, ]
+    new_pbp <- new_pbp[-1, ]
+    
+    # add cumulative score
+    suppressMessages(
+      new_pbp <- new_pbp %>% 
+      left_join(pbp %>% 
+                  mutate(cum_adv = team-opp) %>% 
+                  select(time,cum_adv))
+    )
+    
+    # fill in NA for cum_adv
+    new_pbp <- new_pbp %>% 
+      mutate(cum_adv = na.locf(cum_adv))
+    
+    # returrn
+    return(new_pbp)
+    
   }
   
   pbp_list <- lapply(pbp_list, parse_pbp)
+  
+  
+  
   
   # build up a master play-by-play data frame
   pbp_df <- data.frame(matrix(ncol = 6, nrow = 0))
@@ -136,7 +155,7 @@ get_team_shot_x_time <- function(season, team_name){
   
   
   # cumulative period chart -- highlight medium
-  gg1 <- ggplot(pbp_df, aes(x = time, y = adv)) +
+  gg1 <<- ggplot(pbp_df, aes(x = time, y = adv)) +
     geom_line(aes(col = win, group = interaction(game_id, period)), 
               lwd = 0.1) +
     geom_smooth(method='gam',aes(group = period), col = "black", se = FALSE) +
@@ -152,7 +171,7 @@ get_team_shot_x_time <- function(season, team_name){
           legend.position = "bottom")
   
   # with win indicator -- highlight medium
-  gg2 <- ggplot(pbp_df, aes(x = time, y = adv)) +
+  gg2 <<- ggplot(pbp_df, aes(x = time, y = adv)) +
     geom_line(aes(col = win, group = interaction(game_id, period)), 
               lwd = 0.1) +
     geom_smooth(method='gam',aes(group = period), col = "black", se = FALSE) +
@@ -168,7 +187,9 @@ get_team_shot_x_time <- function(season, team_name){
           panel.grid.minor.y = element_blank(),
           legend.position = "bottom")
   
-  grid.arrange(gg1, gg2)
+  #grid.arrange(gg1, gg2)
+  
+  return(pbp_df)
 }
 
 

@@ -87,5 +87,9 @@ ggplot(improvement, aes(y=reorder(team,delta),x=delta,color=delta)) +
 ##    `get_team_shot_x_time` which returns a team's avg shot adv by quarter
 source("scripts/analyze_play_by_play.R")
 
+get_single_game_stats(2019,"")
 
-get_team_shot_x_time(2018,"San Antonio Spurs")
+get_team_shot_x_time(2018,"Boston Celtics")
+get_team_shot_x_time(2018,"Golden State Warriors")
+get_team_shot_x_time(2019,"Philadelphia 76ers")
+get_team_shot_x_time(2019, "Oklahoma City Thunder")
