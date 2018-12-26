@@ -32,12 +32,39 @@ get_single_game_stats <- function(season,game_id){
     mutate(home_adv = home - visitor,
            win = home>visitor)
   
+  # get metadata
+  current_id <- game_id
+  meta <- read.csv(sprintf("data/schedules/NBA-%s_schedule.csv",season)) %>%
+    filter(game_id == current_id)
+  
+  # get quarter times for vline
+  periods <- unique(pbp$period)
+  x_value <- ifelse(periods <= 4, 12 * 60 * periods, 
+                    12 * 60 * 4 + 5 * 60 * (periods - 4))
+  x_label <- paste0("←",ifelse(periods <= 4, paste0("Q", periods), 
+                    paste0("OT", periods - 4)),"   ")
+  
   # chart
-  ggplot(pbp, aes(x=time/60,y=home_adv)) + 
-    geom_hline(yintercept=0) +
+  gg <<- ggplot(pbp, aes(x=time,y=home_adv)) + 
+    geom_hline(yintercept=0,linetype=2,col='gray40') +
     geom_step(aes(col=home_adv>0,group=1)) +
-    labs(x="Minute",y="Home Scoring Adv.") +
-    facet_wrap(~period,nrow=1,scales='free_x')
+        labs(title = sprintf("%s @ %s, %s",
+                         meta$visitor_team_name, meta$home_team_name,
+                         format.Date(meta$date_game,"%b. %d '%y")),
+         x = "",
+         y = sprintf("%s Score Margin",meta$home_team_name),
+         caption="Source: basketball-reference.com") +
+    scale_x_continuous(breaks = x_value, labels = x_label) +
+    geom_vline(xintercept = x_value,linetype=2,col='gray70') +
+    #annotate('text',x = x_value-100,y=min(pbp$home_adv),label=x_label) +
+    theme_elliott() +
+    theme(panel.spacing = unit(0,"lines"),
+          legend.position = 'none') +
+    scale_color_manual(values=c("TRUE"="#28B463","FALSE"="#E74C3C"))
+  
+  preview(gg)
+  
+  return(pbp)
   
 }
 

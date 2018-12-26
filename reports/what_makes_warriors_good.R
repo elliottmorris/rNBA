@@ -22,7 +22,7 @@ get_winrate_for_3q_down <-  function(season, period_in, team){
   
   third_p_down <- game_by_period %>%
     filter(period == period_in) %>%
-    filter(starting > 10)
+    filter(starting < -10)
   
   # get win rate
   win_pct <- prop.table(table(third_p_down$win)) %>% 

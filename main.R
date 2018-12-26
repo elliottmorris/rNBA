@@ -87,8 +87,15 @@ ggplot(improvement, aes(y=reorder(team,delta),x=delta,color=delta)) +
 ##    `get_team_shot_x_time` which returns a team's avg shot adv by quarter
 source("scripts/analyze_play_by_play.R")
 
-get_single_game_stats(2019,"")
+get_single_game_stats(2019,"201812250GSW")
 
+preview(gg + geom_vline(xintercept = 1690) + 
+  annotate('text',x=1690-50,y=-30,label="LeBron Out",angle=90,hjust=0) + geom_vline(xintercept = 2734) + 
+  annotate('text',x=2734-50,y=-17,label="Curry, KD Out",angle=90,hjust=0))
+
+get_single_game_stats(2019,"201812250BOS")
+
+# shots over time
 get_team_shot_x_time(2018,"Boston Celtics")
 get_team_shot_x_time(2018,"Golden State Warriors")
 get_team_shot_x_time(2019,"Philadelphia 76ers")
