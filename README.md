@@ -10,4 +10,4 @@ Data in the `data/` directory:
  
 Data in the `output/` directory:
 
-* NOT COMMITTED -- files too big (92+mb)
+* **NOT COMMITTED -- files too big (92+mb)**
