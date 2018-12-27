@@ -64,11 +64,11 @@ get_player_stats <- function(season, player_name){
   # IF DF IS EMPTY NOW, MEANS THEY HAVE NOT PLAYED -- RETURN NULL
   if(nrow(stats)==0){return(NULL)}
   
-  # filter out rows with no significant play time -- convert to seconds
-  stats$MP <- as.numeric(str_split(stats$MP,":",simplify = T)[,1]) * 60 + 
-    as.numeric(str_split(stats$MP,":",simplify = T)[,2])
+  # filter out rows with no significant play time 
+  stats$MP <- (as.numeric(str_split(stats$MP,":",simplify = T)[,1]) * 60 + 
+    as.numeric(str_split(stats$MP,":",simplify = T)[,2]) ) / 60 
   
-  stats <- stats %>% filter(MP >= 5*60) # only keep game if player played more than 5 mintues
+  #stats <- stats %>% filter(MP >= 2) # only keep game if player played more than 2 mintues
   
   # rename some vars
   stats <- stats %>%
@@ -77,7 +77,7 @@ get_player_stats <- function(season, player_name){
                   TP = `3P`,
                   TPA = `3PA`,
                   FT_pct = `FT%`,
-                  plus_minus = `+/-`,
+                  BPM = `+/-`,
                   TS_pct = `TS%`,
                   eFG_pct = `eFG%`,
                   TPAr = `3PAr`,
@@ -161,7 +161,7 @@ get_players_season <- function(season){
   
   full_nba_roster <- list()
   
-  roster_l <- pblapply(teams,
+  roster_l <- lapply(teams,
          function(x){
            
            full_nba_roster[[x]] <<- get_team_roster(season,x)
@@ -171,37 +171,49 @@ get_players_season <- function(season){
 }
   
 
-season_yr <- 2019
-full_nba_roster <- get_players_season(season_yr)
-
 # get each games' stats for every player ----------------------------------------------
-full_roster_stats <- 
-  pblapply(1:length(full_nba_roster),
-       function(idx){
-         roster <- full_nba_roster[[idx]]
-         
-         #print(names(full_nba_roster)[idx])
-         
-         roster_stats <- lapply(roster,
-                function(player){
-                  #print(player)
-                  return(get_player_stats(season_yr,player))
-                }
+get_all_players_stats <- function(season){
+  full_nba_roster <- get_players_season(season_yr)
+  
+  full_roster_stats <- 
+    pblapply(1:length(full_nba_roster),
+         function(idx){
+           roster <- full_nba_roster[[idx]]
+           
+           #print(names(full_nba_roster)[idx])
+           
+           roster_stats <- lapply(roster,
+                  function(player){
+                    #print(player)
+                    return(get_player_stats(season_yr,player))
+                  }
+           ) %>% do.call('rbind',.)
+           
+           return(data.frame(team = names(full_nba_roster)[[idx]],
+                             roster_stats))
+           
+           }
          ) %>% do.call('rbind',.)
-         
-         return(data.frame(team = names(full_nba_roster)[[idx]],
-                           roster_stats))
-         
-         }
-       ) %>% do.call('rbind',.)
+}
 
 
+# get stats for every player… ever ----------------------------------------
+years <- substr(dir("data/game data/"),5,8)
 
+players <- 
+  lapply(years,
+       function(x){
+         print("################################")
+         print(sprintf("GETTING STATS FOR %s",x))
+         return(get_all_players_stats(x) %>% mutate(year = x))
+       }) %>% do.call('rbind',.)
+
+write.csv(players,"output/full_gamestats_history.csv",row.names = F)
 # compute summary stats ---------------------------------------------------
 ## for now, take the mean. in the end, this needs to update via empirical bayes
 # summarise by player
 players <- full_roster_stats %>% 
-  group_by(team,Player) %>%
+  group_by(Player) %>%
   summarise_if(is.numeric, mean, na.rm=T) %>%
   as.data.frame()
 
@@ -211,6 +223,11 @@ for(i in 3:ncol(players)){
 }
 
 
+# compute player VORP -----------------------------------------------------
+# formula: [BPM – (-2.0)] * (% of minutes played)*(team games/82)
+players <- players %>%
+  mutate(VORP = (BPM - (-2.0)) * (MP/48)*(1))
+
 # feature selection -------------------------------------------------------
 # set.seed(7)
 # # load the library
@@ -219,7 +236,7 @@ for(i in 3:ncol(players)){
 # # prepare training scheme
 # control <- trainControl(method="repeatedcv", number=10, repeats=3)
 # # train the model
-# model <- train(plus_minus~., data=players[3:length(players)], 
+# model <- train(BPM~., data=players[3:length(players)], 
 #                method="rf", preProcess="scale", trControl=control,importance=T)
 # # estimate variable importance
 # importance <- varImp(model, scale=FALSE)
@@ -275,7 +292,7 @@ plot(2:k.max, calib$tot.within,
 
 
 # optimal is 10
-cluster <- kmeans(players[,3:length(players)],centers = 25)
+cluster <- kmeans(players[,3:length(players)],centers = 20)
 
 players$cluster <- 
   cluster$cluster
@@ -306,9 +323,11 @@ for(i in 3:ncol(players.reg)){
 players.reg <- players.reg %>%
   select(team, Player, starter,
          
-         FGA, eFG_pct, FTA, FT_pct, TOV_pct, DRB_pct, ORB_pct, PF,
+         PTS, FGA, eFG_pct, FTA, FT_pct, TOV_pct, DRB_pct, ORB_pct, TRB_pct, PF,
          
-         DRtg, ORtg, plus_minus)
+         DRtg, ORtg, BPM,
+         
+         VORP)
 
 # calc similarity scores for every combination -- IN PARALLEL
 euc.dist <- function(x1, x2) sqrt(sum((x1 - x2) ^ 2))
@@ -344,8 +363,7 @@ similarity <- as.data.frame(similarity)
 rownames(similarity) <- players.reg$Player
 colnames(similarity) <- players.reg$Player
 
-
-similarity %>% select_("`Kevin Durant`") %>% View()
+similarity %>% select_("`LeBron James`") %>% View()
 
 
 
