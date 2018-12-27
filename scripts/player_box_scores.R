@@ -1,5 +1,9 @@
 # Model a player's offensive and defensive +/-, updating each game, prior is average for 'similar' players, determined by the k-means of a bunch of different stats, using RF and elastic nets
 # step 1: for a specific season, get all the game ids when player x actually played, regardless of the team they were on
+
+
+
+# get boxe scores from all a player’s games -------------------------------
 # helper function for finding the game in a list
 find_game_in_season_list <- function(box_pbp_list,game_id_str){
   games <- 
@@ -173,7 +177,7 @@ get_players_season <- function(season){
 
 # get each games' stats for every player ----------------------------------------------
 get_all_players_stats <- function(season){
-  full_nba_roster <- get_players_season(season_yr)
+  full_nba_roster <- get_players_season(season)
   
   full_roster_stats <- 
     pblapply(1:length(full_nba_roster),
@@ -185,7 +189,7 @@ get_all_players_stats <- function(season){
            roster_stats <- lapply(roster,
                   function(player){
                     #print(player)
-                    return(get_player_stats(season_yr,player))
+                    return(get_player_stats(season,player))
                   }
            ) %>% do.call('rbind',.)
            
@@ -198,19 +202,93 @@ get_all_players_stats <- function(season){
 
 
 # get stats for every player… ever ----------------------------------------
-years <- substr(dir("data/game data/"),5,8)
+# get all available .RDS data files
+years <- as.numeric(substr(dir("data/game data/"),5,8)) %>% rev()
 
-players <- 
+# get box score data from every year
+full_roster_stats <- 
   lapply(years,
        function(x){
          print("################################")
          print(sprintf("GETTING STATS FOR %s",x))
-         return(get_all_players_stats(x) %>% mutate(year = x))
-       }) %>% do.call('rbind',.)
+         return(data.frame(season=x,
+                           get_all_players_stats(x)))
+       }) %>% 
+  do.call('rbind',.)
 
-write.csv(players,"output/full_gamestats_history.csv",row.names = F)
-# compute summary stats ---------------------------------------------------
-## for now, take the mean. in the end, this needs to update via empirical bayes
+# save it, so that we only re-run for new years (implement in function -- read .csv, filter somehow, conditionals??)
+write.csv(full_roster_stats,"output/full_gamestats_history.csv",row.names = F)
+
+
+# use bayes to estimate a player’s box scores -----------------------------
+library(ebbr)
+
+# three pointers
+full_roster_stats %>% 
+  group_by(Player) %>% 
+  summarise(TP = max(sum(TP),1), 
+            TPA = max(sum(TPA),1),
+            season = round(mean(season))) %>%
+  mutate(TP_pct = TP / TPA) %>% 
+  add_ebb_estimate(TP, TPA, method="gamlss",
+                   mu_predictors = ~ season + round(log(TPA)),
+                   sigma_predictors = ~ season + round(log(TPA))) %>% 
+  arrange(desc(.fitted)) %>%
+  head(20) %>%
+  ggplot(.) +
+  geom_point(aes(x=.fitted,y=reorder(Player,.fitted))) +
+  geom_segment(aes(x=.high,xend=.low,y=reorder(Player,.fitted),yend=reorder(Player,.fitted))) +
+  # bayes proj
+  geom_point(aes(x=.mu,y=reorder(Player,.fitted)),col='red') +
+  geom_segment(aes(x=.mu+.sigma*2,xend=.mu-.sigma*2,y=reorder(Player,.fitted),yend=reorder(Player,.fitted)),col='red') +
+  geom_point(aes(x=TP_pct,y=reorder(Player,.fitted)),col='blue')
+
+
+# field goals
+full_roster_stats %>% 
+  group_by(Player) %>% 
+  summarise(FG = max(sum(FG),1), 
+            FGA = max(sum(FGA),1),
+            season = round(mean(season))) %>%
+  mutate(FG_pct = FG / FGA) %>% 
+  add_ebb_estimate(FG, FGA, method="gamlss",
+                   mu_predictors = ~ season + round(log(FGA)),
+                   sigma_predictors = ~ season + round(log(FGA))) %>% 
+  arrange(desc(.fitted)) %>%
+  head(20) %>%
+  ggplot(.) +
+  geom_point(aes(x=.fitted,y=reorder(Player,.fitted))) +
+  geom_segment(aes(x=.high,xend=.low,y=reorder(Player,.fitted),yend=reorder(Player,.fitted))) +
+  # bayes proj
+  geom_point(aes(x=.mu,y=reorder(Player,.fitted)),col='red') +
+  geom_segment(aes(x=.mu+.sigma*2,xend=.mu-.sigma*2,y=reorder(Player,.fitted),yend=reorder(Player,.fitted)),col='red') +
+  geom_point(aes(x=FG_pct,y=reorder(Player,.fitted)),col='blue')
+
+
+# free throws
+full_roster_stats %>% 
+  group_by(Player) %>% 
+  summarise(FT = max(sum(FT),1), 
+            FTA = max(sum(FTA),1),
+            season = round(mean(season))) %>%
+  mutate(FT_pct = FT / FTA) %>% 
+  add_ebb_estimate(FT, FTA, method="gamlss",
+                   mu_predictors = ~ season + round(log(FTA)),
+                   sigma_predictors = ~ season + round(log(FTA))) %>% 
+  arrange(desc(.fitted)) %>%
+  head(20) %>%
+  ggplot(.) +
+  geom_point(aes(x=.fitted,y=reorder(Player,.fitted))) +
+  geom_segment(aes(x=.high,xend=.low,y=reorder(Player,.fitted),yend=reorder(Player,.fitted))) +
+  # bayes proj
+  geom_point(aes(x=.mu,y=reorder(Player,.fitted)),col='red') +
+  geom_segment(aes(x=.mu+.sigma*2,xend=.mu-.sigma*2,y=reorder(Player,.fitted),yend=reorder(Player,.fitted)),col='red') +
+  # actual
+  geom_point(aes(x=FT_pct,y=reorder(Player,.fitted)),col='blue')
+
+
+
+## for now, take the mean of everything. in the end, this needs to update via empirical bayes
 # summarise by player
 players <- full_roster_stats %>% 
   group_by(Player) %>%
@@ -218,7 +296,7 @@ players <- full_roster_stats %>%
   as.data.frame()
 
 # fill in NA with mean
-for(i in 3:ncol(players)){
+for(i in 4:ncol(players)){
   players[is.na(players[,i]), i] <- mean(players[,i], na.rm = TRUE)
 }
 
@@ -236,7 +314,7 @@ players <- players %>%
 # # prepare training scheme
 # control <- trainControl(method="repeatedcv", number=10, repeats=3)
 # # train the model
-# model <- train(BPM~., data=players[3:length(players)], 
+# model <- train(BPM~., data=players[4:length(players)], 
 #                method="rf", preProcess="scale", trControl=control,importance=T)
 # # estimate variable importance
 # importance <- varImp(model, scale=FALSE)
@@ -275,7 +353,7 @@ set.seed(123)
 
 # Compute and plot wss for k = 2 to k = 15.
 k.max <- 50
-data <- players[3:length(players)]
+data <- players[4:length(players)]
 wss <- sapply(2:k.max, 
               function(k){
                 kmeans(data, k)$tot.withinss
@@ -292,7 +370,7 @@ plot(2:k.max, calib$tot.within,
 
 
 # optimal is 10
-cluster <- kmeans(players[,3:length(players)],centers = 20)
+cluster <- kmeans(players[,4:length(players)],centers = 30)
 
 players$cluster <- 
   cluster$cluster
@@ -303,27 +381,21 @@ LeBronCluster <- players[match("LeBron James",players$Player),]$cluster
 players %>% 
   filter(cluster == LeBronCluster)
 
-# !!!  some players get transferred mid-season. Scrap them. Just keep the first observation for now. Later, figure out where they actually are. (Probably by using a better source for the rosters...)
-players <- players %>%
-  group_by(Player) %>%
-  summarise_all(first) %>% 
-  as.data.frame()
-
 
 # similarity scores -------------------------------------------------------
 # rescale the data
 players.reg <- players
 
 # rescale each column
-for(i in 3:ncol(players.reg)){
+for(i in 4:ncol(players.reg)){
   players.reg[,i] <- rescale(players.reg[,i],to = c(0,1))
 }
 
 # select the most important variables
 players.reg <- players.reg %>%
-  select(team, Player, starter,
+  select(Player, starter,
          
-         PTS, FGA, eFG_pct, FTA, FT_pct, TOV_pct, DRB_pct, ORB_pct, TRB_pct, PF,
+         PTS, FGA, eFG_pct, FTA, FT_pct, TPA, TP_pct, TOV_pct, DRB_pct, ORB_pct, TRB_pct, PF,
          
          DRtg, ORtg, BPM,
          
@@ -344,7 +416,7 @@ dist.matrix <- pblapply(1:nrow(players.reg),cl = cl,
                 function(player_b_idx){
                   b <- players.reg[player_b_idx,]
                   
-                  dist <- euc.dist(a[3:length(a)], b[3:length(b)])
+                  dist <- euc.dist(a[4:length(a)], b[4:length(b)])
            
          }) %>% do.call('c',.)
          
@@ -363,8 +435,22 @@ similarity <- as.data.frame(similarity)
 rownames(similarity) <- players.reg$Player
 colnames(similarity) <- players.reg$Player
 
-similarity %>% select_("`LeBron James`") %>% View()
+similarity %>% select(`LeBron James`) %>% View()
+similarity %>% select(`Stephen Curry`) %>% View()
+similarity %>% select(`Kevin Durant`) %>% View()
+similarity %>% select(`Kobe Bryant`) %>% View()
 
+
+data.frame(Lebron = similarity %>% pull(`LeBron James`),
+           Curry = similarity %>% pull(`Stephen Curry`),
+           KD = similarity %>% pull(`Kevin Durant`),
+           Kobe = similarity %>% pull(`Kobe Bryant`)) %>%
+  gather(player,similarity,1:4) %>%
+  ggplot(.,aes(x=similarity,fill=player)) +
+  geom_density(alpha=0.5)
+
+# write similarity matrix
+write.csv(similarity,'output/similarity.csv')
 
 
 
