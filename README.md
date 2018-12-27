@@ -8,3 +8,6 @@ Data in the `data/` directory:
 * Player box scores and play-by-play data for every game ever, in the `data/game data` directory, organized by game. **This data is stored in the `.Rdata` format, due to having lists of data frames for each game in each season.**
 
  
+Data in the `output/` directory:
+
+* NOT COMMITTED -- files too big (92+mb)
