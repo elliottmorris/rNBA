@@ -1,8 +1,6 @@
 full_roster_stats <- read_csv("output/full_gamestats_history.csv")
 
 # compute player-game VORP -------------------------------------------------
-
-
 # formula: [BPM – (-2.0)] * (% of minutes played)*(team games/82)
 full_roster_stats <- full_roster_stats %>%
   mutate(VORP = (BPM - (-2.0)) * (MP/48)*(1)) %>%
@@ -13,6 +11,7 @@ full_roster_stats <- full_roster_stats %>%
          DRtg, ORtg, BPM,
          
          VORP)
+
 
 # use bayes to estimate a player’s box scores -----------------------------
 ## Use ebbr empirical bayes for shooting pctages
@@ -28,7 +27,7 @@ threes_est <- full_roster_stats %>%
   add_ebb_estimate(TP, TPA, method="gamlss",
                    mu_predictors = ~ season + round(log(TPA)),
                    sigma_predictors = ~ season + round(log(TPA))) %>% 
-  select(Player,TP, TPA,TP_pct=.fitted)
+  dplyr::select(Player,TP, TPA,TP_pct=.fitted)
 
 # field goals
 fg_est <- full_roster_stats %>% 
@@ -40,7 +39,7 @@ fg_est <- full_roster_stats %>%
   add_ebb_estimate(FG, FGA, method="gamlss",
                    mu_predictors = ~ season + round(log(FGA)),
                    sigma_predictors = ~ season + round(log(FGA))) %>% 
-  select(Player,FG, FGA, FG_pct=.fitted)
+  dplyr::select(Player,FG, FGA, FG_pct=.fitted)
 
 
 # free throws
@@ -53,10 +52,9 @@ ft_est <- full_roster_stats %>%
   add_ebb_estimate(FT, FTA, method="gamlss",
                    mu_predictors = ~ season + round(log(FTA)),
                    sigma_predictors = ~ season + round(log(FTA))) %>% 
-  dplyr::rename(Player,FT, FTA, FT_pct=.fitted)
+  dplyr::select(Player,FT, FTA, FT_pct=.fitted)
 
-# brms? takes too long. use lme4 instead
-# lme4
+# brms? takes too long. use lme4 to update each stat based on number of observations
 library(lme4)
 estimate_mean_bayes <- function(data,group_in,var_in){
   model_data <- data %>% 
@@ -80,21 +78,39 @@ estimate_mean_bayes <- function(data,group_in,var_in){
   return(player.means)
 }
 
-bayes_v_analytical <- full_roster_stats %>% 
-  group_by(Player) %>% 
-  summarise(PTS.raw = mean(PTS),games=n()) %>% left_join(estimate_mean_bayes(full_roster_stats,"Player","PTS")) %>%
-  mutate(diff = PTS - PTS.raw)
+vars <- names(full_roster_stats)[! names(full_roster_stats) %in% c("season","Player")]
 
-ggplot(bayes_v_analytical %>% filter(games<500), 
-       aes(x=games,y=abs(diff))) +
+bayes_estimates <- 
+  pblapply(vars,
+       function(x){
+         return(estimate_mean_bayes(full_roster_stats,"Player",x))
+       })
+
+bayes_estimates <- 
+  bayes_estimates %>% 
+  plyr::join_all(by="Player") 
+
+
+# check them stats
+full_roster_stats %>% 
+  group_by(Player) %>% 
+  summarise(BPM.raw = mean(BPM),games=n()) %>% 
+  left_join(bayes_estimates) %>%
+  mutate(diff = BPM - BPM.raw)%>%
+  ggplot(.,aes(x=games,y=abs(diff))) +
   geom_point() +
   geom_smooth(method='loess')
 
-# !!! until above is done, just take the mean of all the columns
-players <- full_roster_stats %>%
-  group_by(Player) %>%
-  summarise_if(is.numeric,mean) 
 
+# FINAL PLAYER DATAST --  empirical update for shooting & shooting pctages, lmer updates for all other stats
+Players <- threes_est %>%
+  left_join(fg_est) %>%
+  left_join(ft_est) %>%
+  left_join(bayes_estimates %>%
+              select(-c(TP,TPA,TP_pct,FG,FGA,FT,FTA,FT_pct)))
+  
+
+# finally, if a field is NA, set value to mean
 for(i in names(players)){
   if(length(players[is.na(players[[i]]),][[i]])>0){
     players[is.na(players[[i]]),][[i]] <- mean(players[[i]],na.rm=T)  
@@ -109,7 +125,7 @@ for(i in names(players)){
 # # prepare training scheme
 # control <- trainControl(method="repeatedcv", number=10, repeats=3)
 # # train the model
-# model <- train(BPM~., data=players[4:length(players)], 
+# model <- train(PTS~., data=players[4:length(players)],
 #                method="rf", preProcess="scale", trControl=control,importance=T)
 # # estimate variable importance
 # importance <- varImp(model, scale=FALSE)
@@ -117,30 +133,6 @@ for(i in names(players)){
 # print(importance)
 # # plot importance
 # plot(importance)
-# 
-
-# RESULTS:
-#          Importance   
-# DRtg     44.913
-# ORtg     26.809
-# STL      10.757
-# MP       10.106
-# DRB       9.765
-# AST       8.700
-# TPAr      8.357
-# ORB_pct   8.238
-# TOV       8.108
-# ORB       7.387
-# FGA       6.479
-# TPA       6.331
-# TRB       6.142
-# TP        5.845
-# starter   5.703
-# PTS       5.565
-# AST_pct   5.049
-# PF        5.028
-# FT_pct    5.017
-# DRB_pct   4.844
 
 
 # cluster analysis --------------------------------------------------------
@@ -188,7 +180,6 @@ for(i in 4:ncol(players.reg)){
   players.reg[,i] <- rescale(players.reg[,i],to = c(0,1))
 }
 
-
 # similarity from kd-trees using the `RANN` package
 library(RANN)
 
@@ -227,12 +218,15 @@ similarity <-
          }
        ) 
 
-similarity <- rbindlist(similarity)
+similarity <- rbindlist(similarity) %>% as.data.frame()
 
 stopCluster(cl)
 
 nrow(similarity)
 length(similarity)
+
+# scale similarity to be from 0 to 1
+similarity <- 1 - (similarity/max(similarity))
 
 # analyze similarity
 rownames(similarity) <- players.reg$Player
