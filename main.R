@@ -79,8 +79,6 @@ improvement <-
 ggplot(improvement, aes(y=reorder(team,delta),x=delta,color=delta)) +
   geom_lollipop(horizontal = TRUE,size=1) 
 
-# box scores --------------------------------------------------------------
-
 # play-by-play ------------------------------------------------------------
 ## returns functions...
 ##    `get_single_game_stats` which plots the home team adv over time
@@ -95,8 +93,24 @@ preview(gg + geom_vline(xintercept = 1690) +
 
 get_single_game_stats(2019,"201812250BOS")
 
-# shots over time
-get_team_shot_x_time(2018,"Boston Celtics")
-get_team_shot_x_time(2018,"Golden State Warriors")
+# avg shots over time
+get_team_shot_x_time(2018,"Boston Celtics"); gg1
+get_team_shot_x_time(2016,"Golden State Warriors"); gg1
 get_team_shot_x_time(2019,"Philadelphia 76ers")
 get_team_shot_x_time(2019, "Oklahoma City Thunder")
+
+# box scores --------------------------------------------------------------
+# wrangle game-by-game box scores from the downloaded .RDS files for each player, add to a master df
+source("scripts/player_box_scores.R")
+
+# use bayesian stats to compute best estimate shooting pctages, VORP, etc, then compute a similarity matrix for nrow(Players) Players
+source("scripts/bayes_stats_and_clustering.R")
+
+
+
+# determine value of team with roster and bayesian stats ------------------
+# gotta use VORP? archtypes approach? dk where to go from here...
+
+
+
+
