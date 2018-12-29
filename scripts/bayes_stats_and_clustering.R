@@ -117,6 +117,10 @@ for(i in names(players)){
   }
 }
 
+
+# write the stats
+write.csv(Players,"output/player_stats.csv",row.names = F)
+
 # feature selection -------------------------------------------------------
 # set.seed(7)
 # # load the library
@@ -134,6 +138,28 @@ for(i in names(players)){
 # # plot importance
 # plot(importance)
 
+# 
+# rf variable importance
+# 
+# Overall
+# FG      45.62691
+# TP      25.19834
+# TPA     23.63687
+# FGA     18.65551
+# FT      12.11729
+# ORtg     9.47279
+# FTA      8.37935
+# ORB_pct  4.45972
+# eFG_pct  4.35761
+# DRtg     3.94272
+# VORP     2.38062
+# PF       2.31274
+# DRB_pct  2.12753
+# BPM      2.05545
+# FT_pct   1.35750
+# TP_pct   0.92339
+# TOV_pct  0.69641
+# TRB_pct  0.09517
 
 # cluster analysis --------------------------------------------------------
 set.seed(123)
